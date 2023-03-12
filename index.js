@@ -5,10 +5,9 @@ const io = require("socket.io")(server);
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
-const http = require("https");
 const fetch = require("node-fetch");
 const WebSocket = require("ws");
-const { match } = require("assert");
+const isEqual = require("lodash/isEqual");
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -25,9 +24,22 @@ let shard = null;
 let clientVersion = null;
 let partyId = null;
 let party = null;
+let partyOld = null;
 let gameModes = null;
-let preGame = null;
+let preGameId = null;
+let pregame = null;
+let pregameOld = null;
 let currentMatch = null;
+let playerContracts = null;
+
+function stopServer() {
+  server.close(() => {
+    console.log("Servidor http detenido");
+    io.close(() => {
+      console.log("Servidor Socket.io detenido");
+    });
+  });
+}
 
 const localAgent = new https.Agent({
   rejectUnauthorized: false,
@@ -178,7 +190,7 @@ async function getVersion() {
   await fetch(url, options)
     .then((res) => res.json())
     .then((json) => {
-      console.log("✅ ~ file: index.js:169 ~ getVersion ~ url:", url);
+      console.log("✅ ~ file: index.js:184 ~ getVersion ~ url:", url);
       clientVersion = json.data.riotClientVersion;
     })
     .catch((err) => console.error("error:" + err));
@@ -198,7 +210,36 @@ async function getPregame() {
 
   await fetch(url, options)
     .then((res) => res.json())
-    .then((json) => (preGame = json.MatchID))
+    .then(async (json) => {
+      console.log("✅ ~ file: index.js:198 ~ getPreGameMatch ~ url:", url);
+      preGameId = json.MatchID;
+      await getPreGameMatch();
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
+async function getPreGameMatch() {
+  if (preGameId == null) return;
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}`;
+
+  let options = {
+    method: "GET",
+    headers: {
+      "X-Riot-Entitlements-JWT": entitlement,
+      Authorization: "Bearer " + token,
+    },
+  };
+
+  await fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      pregame = {
+        map: json.MapID,
+        team: json.AllyTeam.Players,
+        queue: json.QueueID,
+      };
+      console.log("✅ ~ file: index.js:221 ~ getPreGameMatch ~ url:", url);
+    })
     .catch((err) => console.error("error:" + err));
 }
 
@@ -337,11 +378,14 @@ async function getCurrentMatch() {
 
   fetch(url, options)
     .then((res) => res.json())
-    .then((json) => (currentMatch = json.MatchID))
+    .then((json) => {
+      globalSocket?.emit("inGame", json.MatchID);
+      currentMatch = json.MatchID;
+    })
     .catch((err) => console.error("error:" + err));
 }
 
-async function getContracts() {
+async function getPlayerContracts() {
   let url = `https://pd.${shard}.a.pvp.net/contracts/v1/contracts/${puuid}`;
 
   let options = {
@@ -353,22 +397,61 @@ async function getContracts() {
     },
   };
 
-  fetch(url, options)
+  await fetch(url, options)
     .then((res) => res.json())
-    .then((json) => console.log(json))
+    .then((json) => {
+      playerContracts = json;
+      console.log("✅ ~ file: index.js:391 ~ getPlayerContracts ~ url:", url);
+    })
     .catch((err) => console.error("error:" + err));
 }
 
 async function selectAgent(agent) {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGame}/select/${agent}`;
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}/select/${agent}`;
 
   let options = {
     method: "POST",
     headers: {
-      "X-Riot-Entitlements-JWT":
-        "eyJraWQiOiJrMSIsImFsZyI6IlJTMjU2In0.eyJlbnRpdGxlbWVudHMiOltdLCJhdF9oYXNoIjoiTGs0dzN6djZYYnZJaGVqemVRejJGZyIsInN1YiI6ImY0ZjliN2NjLTNjMTMtNWU3Mi1iY2UwLTNkYzQ1MDA4MjkwOSIsImlzcyI6Imh0dHBzOlwvXC9lbnRpdGxlbWVudHMuYXV0aC5yaW90Z2FtZXMuY29tIiwiaWF0IjoxNjc4MzMzMjA3LCJqdGkiOiJxU0F3T0dZaHd3NCJ9.fUx2xbMNkBtcyfXFFU7CsydYSlG2TJVCKx9-lCtGVfyQHKez-uBQScP7Z8cx2ynf83XboZK05JPsA4ShpizSsfS07uZlaXXB9NueOVzdTTgoPZruR6OBIbQSpx51SGeR-cM_F2EEu2C8o-LsTcXbhJZktPEia47lixW8c7NTf5u0m643DXyRpocc7z_WM0UT86AKlnf1_Azoqe2FaU0TGhJX08q9EjV8iIH2YNCQ1mKOmSaf7ckTQtB3cqkiHttOaeSS9mh3wWzXR1FQByZBcj67lNPhDH57OP3UZbqbUQwwfyAm8pXXmGZZp0WEjCMNmIaf6d9cct4fNx0luYo26Q",
-      Authorization:
-        "Bearer eyJraWQiOiJzMSIsImFsZyI6IlJTMjU2In0.eyJwcCI6eyJjIjoiYW0ifSwic3ViIjoiZjRmOWI3Y2MtM2MxMy01ZTcyLWJjZTAtM2RjNDUwMDgyOTA5Iiwic2NwIjpbImFjY291bnQiLCJvcGVuaWQiXSwiY2xtIjpbImZlZGVyYXRlZF9pZGVudGl0eV9wcm92aWRlcnMiLCJlbWFpbF92ZXJpZmllZCIsInJnbl9MQTEiLCJvcGVuaWQiLCJwdyIsInBob25lX251bWJlcl92ZXJpZmllZCIsImFjY3RfZ250IiwibG9jYWxlIiwiYWNjdCIsImFnZSIsImFjY291bnRfdmVyaWZpZWQiLCJhZmZpbml0eSJdLCJkYXQiOnsicCI6bnVsbCwiciI6IkxBMSIsImMiOiJ1ZTEiLCJ1IjoyMDQ1MzM3MzMsImxpZCI6InZKNm5rcGZTQjlpUG9tbzg0NnpGa1EifSwiaXNzIjoiaHR0cHM6Ly9hdXRoLnJpb3RnYW1lcy5jb20iLCJleHAiOjE2NzgzMzY4MDUsImlhdCI6MTY3ODMzMzIwNSwianRpIjoicVNBd09HWWh3dzQiLCJjaWQiOiJwbGF5LXZhbG9yYW50LXdlYi1wcm9kIn0.UcFYmsC7UlfImmuYNw1NP146RB9v6SKWtc-i6Hs1E3ehcdjDmeqInCKeK55fZviwFaB6Cky-ykBldTBHRtROZiCjNOSkiok3VdYVjXcRjswupMTLmtnewERR4hCYYQVaFe9HIumB1xZJzzoRs5lq37ugpmGrY0x0HcNGwAgj908",
+      "X-Riot-Entitlements-JWT": entitlement,
+      Authorization: "Bearer " + token,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      console.log("✅ ~ file: index.js:379 ~ selectAgent ~ url:", url);
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
+async function lockAgent(agent) {
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}/lock/${agent}`;
+
+  let options = {
+    method: "POST",
+    headers: {
+      "X-Riot-Entitlements-JWT": entitlement,
+      Authorization: "Bearer " + token,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) =>
+      console.log("✅ ~ file: index.js:387 ~ lockAgent ~ url:", url)
+    )
+    .catch((err) => console.error("error:" + err));
+}
+
+async function dodge() {
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}/quit`;
+
+  let options = {
+    method: "POST",
+    headers: {
+      "X-Riot-Entitlements-JWT": entitlement,
+      Authorization: "Bearer " + token,
     },
   };
 
@@ -408,7 +491,6 @@ async function run() {
         sessionData = null;
       }
     } catch (e) {
-      console.log(e);
       const currentTime = new Date().getTime();
       if (currentTime - lastRetryMessage > 1000) {
         state = "Unable to get session data, retrying...";
@@ -467,7 +549,15 @@ async function run() {
     await getEntitlementsToken(lockData.port, lockData.password);
     await getPUUID(lockData.port, lockData.password);
     await getPartyPlayer();
-    await getParty();
+    await getPlayerContracts();
+
+    // To do...
+    if (partyId) {
+      await getParty();
+    } else {
+      await getPartyPlayer();
+      await getParty();
+    }
   });
 
   ws.on("message", async (data) => {
@@ -485,22 +575,35 @@ async function run() {
 
     if (eventName === "OnJsonApiEvent_riot-messaging-service_v1_message") {
       if (event.data.service === "pregame") {
-        // console.log(event);
         if (
           event.uri.includes(
             "/riot-messaging-service/v1/message/ares-pregame/pregame/v1/matches/"
           )
         ) {
           await getPregame();
-          globalSocket?.emit("preGameEvent", preGame);
+          console.info("preGameId", preGameId);
+          if (preGameId === null || preGameId === undefined) {
+            globalSocket?.emit("preGameEvent", {
+              preGameId: "undefined",
+              pregame: "undefined",
+            });
+          }
+          if (isEqual(pregame?.team, pregameOld?.team)) return;
+          pregameOld = pregame;
+          globalSocket?.emit("preGameEvent", {
+            preGameId: preGameId,
+            pregame: pregame,
+          });
         }
       }
     }
 
-    // if (eventName === "OnJsonApiEvent_chat_v4_presences") {
-    //   await getParty();
-    //   globalSocket?.emit("updateData");
-    // }
+    if (eventName === "OnJsonApiEvent_chat_v4_presences") {
+      await getParty();
+      if (isEqual(party, partyOld)) return;
+      partyOld = party;
+      globalSocket?.emit("updateData");
+    }
   });
 
   ws.on("close", () => {
@@ -509,6 +612,7 @@ async function run() {
     console.log("Websocket closed!");
     globalSocket?.emit("disconnected");
     // logStream.end();
+    stopServer();
   });
 }
 
@@ -527,14 +631,17 @@ io.on("connection", async (socket) => {
 
   party && socket.emit("party", party);
 
+  playerContracts && socket.emit("playerContracts", playerContracts);
+
   socket.on("updateData", () => {
     puuid && socket.emit("puuid", puuid);
     gameModes && socket.emit("gamemodes", gameModes);
     party && socket.emit("party", party);
+    playerContracts && socket.emit("playerContracts", playerContracts);
   });
 
   socket.on("setGamemode", async (data) => {
-    console.log("setGamemode", data);
+    console.log("setGamemode");
     await changeQueue(data);
   });
 
@@ -549,18 +656,38 @@ io.on("connection", async (socket) => {
   });
 
   socket.on("partyAccess", async (data) => {
-    console.log("partyAccess", data);
+    console.log("partyAccess");
     await partyAccessibility(data);
   });
 
   socket.on("selectAgent", async (data) => {
-    console.log("selectAgent", data);
+    console.log("selectAgent");
     await selectAgent(data);
+  });
+
+  socket.on("lockAgent", async (data) => {
+    console.log("lockAgent");
+    await lockAgent(data);
+  });
+
+  socket.on("isInGame", async () => {
+    console.log("isInGame?");
+    await getCurrentMatch();
+  });
+
+  socket.on("dodge", async () => {
+    console.log("dodge");
+    await dodge();
   });
 
   socket.on("disconnect", () => {
     socket.emit("console", "Disconnected");
     console.log("Usuario desconectado");
+  });
+
+  socket.on("error", (err) => {
+    socket.emit("console", "Error");
+    console.log("Error", err);
   });
 });
 
