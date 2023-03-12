@@ -572,7 +572,7 @@ async function run() {
     const event = dataString[2];
 
     // console.log(eventName, event);
-
+    /* Pregame events */
     if (eventName === "OnJsonApiEvent_riot-messaging-service_v1_message") {
       if (event.data.service === "pregame") {
         if (
@@ -598,12 +598,32 @@ async function run() {
       }
     }
 
-    if (eventName === "OnJsonApiEvent_chat_v4_presences") {
+    /* Match events */
+    if (eventName === "OnJsonApiEvent_riot-messaging-service_v1_message") {
+      if (event.data.service === "core-game") {
+        if (
+          event.uri.includes(
+            "/riot-messaging-service/v1/message/ares-core-game/core-game/v1/matches/"
+          )
+        ) {
+          await getCurrentMatch();
+          // console.log("currentMatch", currentMatch);
+          globalSocket?.emit("inGame", currentMatch);
+        }
+      }
+    }
+
+    /* Party, and chat events */
+    /*if (eventName === "OnJsonApiEvent_chat_v4_presences") {
       await getParty();
       if (isEqual(party, partyOld)) return;
       partyOld = party;
       globalSocket?.emit("updateData");
-    }
+    }*/
+
+    /*if (eventName === "OnJsonApiEvent_chat_v5_messages") {
+      globalSocket?.emit("chat", event);
+    }*/
   });
 
   ws.on("close", () => {
