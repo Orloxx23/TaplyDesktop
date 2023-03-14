@@ -1,6 +1,6 @@
 const express = require("express");
-const app = express();
-const server = require("http").Server(app);
+const appServer = express();
+const server = require("http").Server(appServer);
 const io = require("socket.io")(server);
 const fs = require("fs");
 const path = require("path");
@@ -9,9 +9,136 @@ const fetch = require("node-fetch");
 const WebSocket = require("ws");
 const isEqual = require("lodash/isEqual");
 
+const ip = require("ip");
+
+const { app, BrowserWindow, Tray, Notification, screen } = require("electron");
+const { ipcMain } = require("electron");
+const { Menu } = require("electron");
+
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 7000;
+
+let showNotificationBackground = true;
+
+/* Electron */
+let win = null;
+let loadingWin = null;
+const createWindow = () => {
+  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+  win = new BrowserWindow({
+    width: 600,
+    height: 300,
+    x: 100,
+    y: 100,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      nodeIntegration: true,
+      contextIsolation: false,
+    },
+    titleBarStyle: "hidden",
+    resizable: false,
+    fullscreenable: false,
+    hasShadow: true,
+  });
+
+  const [windowWidth, windowHeight] = win.getSize();
+  win.setPosition((width - 5) - windowWidth, (height - 5) - windowHeight);
+  win.loadFile("index.html");
+};
+
+const createLoadingWindow = () => {
+  loadingWin = new BrowserWindow({
+    width: 300,
+    height: 300,
+    webPreferences: {
+      nodeIntegration: true,
+      contextIsolation: false,
+      preload: path.join(__dirname, "src/js/loadingPrelaod.js"),
+    },
+    titleBarStyle: "hidden",
+    resizable: false,
+    fullscreenable: false,
+    hasShadow: true,
+  });
+  loadingWin.loadFile("loading.html");
+};
+
+let tray = null;
+app.whenReady().then(() => {
+  createLoadingWindow();
+  //createWindow();
+
+  tray = new Tray(path.join(__dirname, "tray-icon.png"));
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "Open",
+      click: () => {
+        win.show();
+      },
+    },
+    {
+      label: "Close",
+      click: () => {
+        app.quit();
+      },
+    },
+  ]);
+
+  tray.setContextMenu(contextMenu);
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+
+  ipcMain.on("closeApp", (event, arg) => {
+    win.hide();
+
+    const notification = new Notification({
+      title: "Background app",
+      body: "The app continues to run in the background.",
+      icon: path.join(__dirname, "tray-icon.png"),
+      silent: true,
+    });
+
+    if (showNotificationBackground) {
+      notification.show();
+      showNotificationBackground = false;
+    }
+  });
+
+  ipcMain.on("minimizeApp", (event, arg) => {
+    win.minimize();
+  });
+});
+
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+
+ipcMain.on("online", (event, arg) => {
+  if (loadingWin) {
+    if (!win) {
+      loadingWin.close();
+      loadingWin = null;
+      createWindow();
+      run();
+    }
+  }
+});
+
+ipcMain.on("offline", (event, arg) => {
+  if (win) {
+    if (!loadingWin) {
+      createLoadingWindow();
+      win.hide();
+      win = null;
+    }
+  }
+});
+
+/* ----- */
 
 let lockData = null;
 
@@ -31,6 +158,22 @@ let pregame = null;
 let pregameOld = null;
 let currentMatch = null;
 let playerContracts = null;
+let userIp = null;
+
+function getUserIp() {
+  const tempIp = ip.address();
+  if (tempIp.includes("127")) {
+    getUserIp();
+  } else {
+    userIp = tempIp;
+  }
+}
+
+// console.log("IP: " + userIp);
+
+ipcMain.on("getCode", (event, arg) => {
+  event.reply("code", userIp);
+});
 
 function stopServer() {
   server.close(() => {
@@ -472,6 +615,7 @@ async function run() {
     } catch (e) {
       state = "Waiting for lockfile...";
       globalSocket?.emit("console", state);
+      win.webContents.send("message", "Waiting for the game to start...");
       console.log("Waiting for lockfile...");
       await waitForLockfile();
     }
@@ -558,6 +702,8 @@ async function run() {
       await getPartyPlayer();
       await getParty();
     }
+
+    win.webContents.send("message", "Available.");
   });
 
   ws.on("message", async (data) => {
@@ -631,16 +777,18 @@ async function run() {
     globalSocket?.emit("console", state);
     console.log("Websocket closed!");
     globalSocket?.emit("disconnected");
+    win.webContents.send("message", "Game closed.");
     // logStream.end();
     stopServer();
   });
 }
 
-run();
+getUserIp();
 
 io.on("connection", async (socket) => {
   globalSocket = socket;
   console.log("Usuario conectado");
+  win.webContents.send("message", "Connected.");
   socket.emit("connected");
 
   socket.emit("console", state);
@@ -703,6 +851,7 @@ io.on("connection", async (socket) => {
   socket.on("disconnect", () => {
     socket.emit("console", "Disconnected");
     console.log("Usuario desconectado");
+    win.webContents.send("message", "Offline.");
   });
 
   socket.on("error", (err) => {

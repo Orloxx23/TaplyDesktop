@@ -1,0 +1,55 @@
+body {
+  background: #222b45;
+  color: white;
+  font-family: "Montserrat", sans-serif;
+  margin: 0;
+  padding: 0;
+  -webkit-app-region: drag;
+  -webkit-user-select: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.loading__container {
+  width: calc(100% - 80px);
+  height: calc(100vh - 80px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  padding: 40px;
+}
+
+.loading svg polyline {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.loading svg polyline#back {
+  fill: none;
+  stroke: #ff4d5033;
+}
+
+.loading svg polyline#front {
+  fill: none;
+  stroke: #ff4d4f;
+  stroke-dasharray: 48, 144;
+  stroke-dashoffset: 192;
+  animation: dash_682 1.4s linear infinite;
+}
+
+@keyframes dash_682 {
+  72.5% {
+    opacity: 0;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+#load-message{
+    margin-top: 20px;
+}

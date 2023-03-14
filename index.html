@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link rel="stylesheet" href="src/css/style.css" />
+    <script
+      src="https://kit.fontawesome.com/00a734f883.js"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div class="window__topbar">
+      <div class="window__topbar__left">VALORREMOTE</div>
+      <div class="window__topbar__right">
+        <div class="window__topbar__right__button minimize" id="minimizeBtn">
+          <i class="fa-solid fa-window-minimize"></i>
+        </div>
+        <div class="window__topbar__right__button close" id="closeBtn">
+          <i class="fa-solid fa-xmark"></i>
+        </div>
+      </div>
+    </div>
+
+    <div class="window__body">
+      <div class="window__body__left">
+        <div class="instructions">
+          <h1>HOW TO CONNECT</h1>
+          <p>
+            To control Valorant from your phone you must enter the code that is
+            displayed on the screen.
+          </p>
+          <span id="client-code">0.0.0.0</span>
+        </div>
+      </div>
+      <div class="window__body__right">
+        <div class="message-container">
+          <span id="message">Loading...</span>
+        </div>
+        <img
+          src="https://media.valorant-api.com/agents/117ed9e3-49f3-6512-3ccf-0cada7e3823b/fullportrait.png"
+          alt=""
+          draggable="false"
+          id="agent-img"
+        />
+      </div>
+    </div>
+
+    <!-- <p id="output">Click it to see the effect in this interface.</p> -->
+
+    <script src="renderer.js"></script>
+    <script src="src/js/appFunctions.js"></script>
+  </body>
+</html>
