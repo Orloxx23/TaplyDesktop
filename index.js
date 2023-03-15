@@ -24,119 +24,127 @@ let showNotificationBackground = true;
 /* Electron */
 let win = null;
 let loadingWin = null;
-const createWindow = () => {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-  win = new BrowserWindow({
-    width: 600,
-    height: 300,
-    x: 100,
-    y: 100,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      nodeIntegration: true,
-      contextIsolation: false,
-    },
-    titleBarStyle: "hidden",
-    resizable: false,
-    fullscreenable: false,
-    hasShadow: true,
-  });
 
-  const [windowWidth, windowHeight] = win.getSize();
-  win.setPosition((width - 5) - windowWidth, (height - 5) - windowHeight);
-  win.loadFile("index.html");
-};
-
-const createLoadingWindow = () => {
-  loadingWin = new BrowserWindow({
-    width: 300,
-    height: 300,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false,
-      preload: path.join(__dirname, "src/js/loadingPrelaod.js"),
-    },
-    titleBarStyle: "hidden",
-    resizable: false,
-    fullscreenable: false,
-    hasShadow: true,
-  });
-  loadingWin.loadFile("loading.html");
-};
-
-let tray = null;
-app.whenReady().then(() => {
-  createLoadingWindow();
-  //createWindow();
-
-  tray = new Tray(path.join(__dirname, "tray-icon.png"));
-
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: "Open",
-      click: () => {
-        win.show();
+const isSingleInstance = app.requestSingleInstanceLock();
+if (!isSingleInstance) {
+  // Si ya hay una instancia en ejecución, cierra la actual
+  app.quit();
+  return;
+} else {
+  const createWindow = () => {
+    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+    win = new BrowserWindow({
+      width: 600,
+      height: 300,
+      x: 100,
+      y: 100,
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        nodeIntegration: true,
+        contextIsolation: false,
       },
-    },
-    {
-      label: "Close",
-      click: () => {
-        app.quit();
-      },
-    },
-  ]);
-
-  tray.setContextMenu(contextMenu);
-
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
-
-  ipcMain.on("closeApp", (event, arg) => {
-    win.hide();
-
-    const notification = new Notification({
-      title: "Background app",
-      body: "The app continues to run in the background.",
-      icon: path.join(__dirname, "tray-icon.png"),
-      silent: true,
+      titleBarStyle: "hidden",
+      resizable: false,
+      fullscreenable: false,
+      hasShadow: true,
     });
 
-    if (showNotificationBackground) {
-      notification.show();
-      showNotificationBackground = false;
-    }
-  });
+    const [windowWidth, windowHeight] = win.getSize();
+    win.setPosition(width - 5 - windowWidth, height - 5 - windowHeight);
+    win.loadFile("index.html");
+  };
 
-  ipcMain.on("minimizeApp", (event, arg) => {
-    win.minimize();
-  });
-});
+  const createLoadingWindow = () => {
+    loadingWin = new BrowserWindow({
+      width: 300,
+      height: 300,
+      webPreferences: {
+        nodeIntegration: true,
+        contextIsolation: false,
+        preload: path.join(__dirname, "src/js/loadingPrelaod.js"),
+      },
+      titleBarStyle: "hidden",
+      resizable: false,
+      fullscreenable: false,
+      hasShadow: true,
+    });
+    loadingWin.loadFile("loading.html");
+  };
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+  let tray = null;
+  app.whenReady().then(() => {
+    createLoadingWindow();
+    //createWindow();
 
-ipcMain.on("online", (event, arg) => {
-  if (loadingWin) {
-    if (!win) {
-      loadingWin.close();
-      loadingWin = null;
-      createWindow();
-      run();
-    }
-  }
-});
+    tray = new Tray(path.join(__dirname, "tray-icon.png"));
 
-ipcMain.on("offline", (event, arg) => {
-  if (win) {
-    if (!loadingWin) {
-      createLoadingWindow();
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: "Open",
+        click: () => {
+          win.show();
+        },
+      },
+      {
+        label: "Close",
+        click: () => {
+          app.quit();
+        },
+      },
+    ]);
+
+    tray.setContextMenu(contextMenu);
+
+    app.on("activate", () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+
+    ipcMain.on("closeApp", (event, arg) => {
       win.hide();
-      win = null;
+
+      const notification = new Notification({
+        title: "Background app",
+        body: "The app continues to run in the background.",
+        icon: path.join(__dirname, "tray-icon.png"),
+        silent: true,
+      });
+
+      if (showNotificationBackground) {
+        notification.show();
+        showNotificationBackground = false;
+      }
+    });
+
+    ipcMain.on("minimizeApp", (event, arg) => {
+      win.minimize();
+    });
+  });
+
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
+
+  ipcMain.on("online", (event, arg) => {
+    if (loadingWin) {
+      if (!win) {
+        loadingWin.close();
+        loadingWin = null;
+        createWindow();
+        run();
+      }
     }
-  }
-});
+  });
+
+  ipcMain.on("offline", (event, arg) => {
+    if (win) {
+      if (!loadingWin) {
+        createLoadingWindow();
+        win.hide();
+        win = null;
+      }
+    }
+  });
+}
 
 /* ----- */
 
@@ -609,15 +617,16 @@ let globalSocket = null;
 
 async function run() {
   lockData = null;
+  win.webContents.send("message", "Waiting for the game to start...");
   do {
     try {
       lockData = await getLockfileData();
     } catch (e) {
       state = "Waiting for lockfile...";
       globalSocket?.emit("console", state);
-      win.webContents.send("message", "Waiting for the game to start...");
       console.log("Waiting for lockfile...");
       await waitForLockfile();
+      win.webContents.send("message", "Waiting for the game to start...");
     }
   } while (lockData === null);
 
@@ -760,12 +769,14 @@ async function run() {
     }
 
     /* Party, and chat events */
-    /*if (eventName === "OnJsonApiEvent_chat_v4_presences") {
+    if (eventName === "OnJsonApiEvent_chat_v4_presences") {
+      if (event.data.presences[0].puuid !== puuid) return;
+
       await getParty();
-      if (isEqual(party, partyOld)) return;
+
       partyOld = party;
       globalSocket?.emit("updateData");
-    }*/
+    }
 
     /*if (eventName === "OnJsonApiEvent_chat_v5_messages") {
       globalSocket?.emit("chat", event);
@@ -788,7 +799,6 @@ getUserIp();
 io.on("connection", async (socket) => {
   globalSocket = socket;
   console.log("Usuario conectado");
-  win.webContents.send("message", "Connected.");
   socket.emit("connected");
 
   socket.emit("console", state);
@@ -851,7 +861,6 @@ io.on("connection", async (socket) => {
   socket.on("disconnect", () => {
     socket.emit("console", "Disconnected");
     console.log("Usuario desconectado");
-    win.webContents.send("message", "Offline.");
   });
 
   socket.on("error", (err) => {
