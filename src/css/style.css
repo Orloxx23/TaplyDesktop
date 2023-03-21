@@ -21,6 +21,12 @@ body {
   user-select: none;
 }
 
+.window__topbar__left{
+  display: flex;
+  align-items: center;
+  height: 100%;
+}
+
 .window__topbar__right {
   display: flex;
   align-items: center;

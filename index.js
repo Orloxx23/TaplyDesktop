@@ -1,7 +1,7 @@
 const express = require("express");
 const appServer = express();
-const server = require("http").Server(appServer);
-const io = require("socket.io")(server);
+let server = require("http").Server(appServer);
+let io = require("socket.io")(server);
 const fs = require("fs");
 const path = require("path");
 const https = require("https");
@@ -17,20 +17,30 @@ const { Menu } = require("electron");
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
-const PORT = process.env.PORT || 7000;
+// We will use port 7000 for our server
+const PORT = 7000;
 
+// Show notification when closing window
 let showNotificationBackground = true;
 
 /* Electron */
 let win = null;
 let loadingWin = null;
 
+// To avoid opening multiple windows when installing.
+if (require("electron-squirrel-startup")) app.quit();
+
+// We set the name to our app
+app.setName("Taply");
+
+// We check that the application is not open to start it
 const isSingleInstance = app.requestSingleInstanceLock();
 if (!isSingleInstance) {
-  // Si ya hay una instancia en ejecución, cierra la actual
+  // If there is already an instance running, close the current one
   app.quit();
   return;
 } else {
+  // Create the main window
   const createWindow = () => {
     const { width, height } = screen.getPrimaryDisplay().workAreaSize;
     win = new BrowserWindow({
@@ -42,11 +52,13 @@ if (!isSingleInstance) {
         preload: path.join(__dirname, "preload.js"),
         nodeIntegration: true,
         contextIsolation: false,
+        devTools: false,
       },
       titleBarStyle: "hidden",
       resizable: false,
       fullscreenable: false,
       hasShadow: true,
+      icon: path.join(__dirname, "logo.png"),
     });
 
     const [windowWidth, windowHeight] = win.getSize();
@@ -54,6 +66,7 @@ if (!isSingleInstance) {
     win.loadFile("index.html");
   };
 
+  // Create the loading window
   const createLoadingWindow = () => {
     loadingWin = new BrowserWindow({
       width: 300,
@@ -62,23 +75,32 @@ if (!isSingleInstance) {
         nodeIntegration: true,
         contextIsolation: false,
         preload: path.join(__dirname, "src/js/loadingPrelaod.js"),
+        devTools: false,
       },
       titleBarStyle: "hidden",
       resizable: false,
       fullscreenable: false,
       hasShadow: true,
+      icon: path.join(__dirname, "logo.png"),
     });
     loadingWin.loadFile("loading.html");
   };
 
   let tray = null;
   app.whenReady().then(() => {
+    // When the app is ready we create the loading window
     createLoadingWindow();
-    //createWindow();
 
-    tray = new Tray(path.join(__dirname, "tray-icon.png"));
+    // We create the tray icon
+    tray = new Tray(path.join(__dirname, "logo.png"));
 
+    // Background app menu
     const contextMenu = Menu.buildFromTemplate([
+      {
+        label: "Taply",
+        enabled: false,
+        icon: path.join(__dirname, "logo3.png"),
+      },
       {
         label: "Open",
         click: () => {
@@ -92,20 +114,20 @@ if (!isSingleInstance) {
         },
       },
     ]);
-
     tray.setContextMenu(contextMenu);
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
     });
 
+    // When it receives the "closeApp" order we hide the window and show the notification
     ipcMain.on("closeApp", (event, arg) => {
       win.hide();
 
       const notification = new Notification({
         title: "Background app",
         body: "The app continues to run in the background.",
-        icon: path.join(__dirname, "tray-icon.png"),
+        icon: path.join(__dirname, "logo.png"),
         silent: true,
       });
 
@@ -115,6 +137,7 @@ if (!isSingleInstance) {
       }
     });
 
+    // When it receives the "minimizeApp" order we minimize the window
     ipcMain.on("minimizeApp", (event, arg) => {
       win.minimize();
     });
@@ -124,6 +147,7 @@ if (!isSingleInstance) {
     if (process.platform !== "darwin") app.quit();
   });
 
+  // If there is an internet connection, it stops loading and goes to the main window and starts the "run()" process.
   ipcMain.on("online", (event, arg) => {
     if (loadingWin) {
       if (!win) {
@@ -135,6 +159,7 @@ if (!isSingleInstance) {
     }
   });
 
+  // If there is no internet, the loading window will be displayed
   ipcMain.on("offline", (event, arg) => {
     if (win) {
       if (!loadingWin) {
@@ -149,6 +174,9 @@ if (!isSingleInstance) {
 /* ----- */
 
 let lockData = null;
+let helpData = null;
+let sessionData = null;
+let lastRetryMessage = 0;
 
 let token = null;
 let entitlement = null;
@@ -168,28 +196,48 @@ let currentMatch = null;
 let playerContracts = null;
 let userIp = null;
 
+// We get the user's IP
 function getUserIp() {
   const tempIp = ip.address();
-  if (tempIp.includes("127")) {
+  if (!tempIp.includes("192")) {
     getUserIp();
   } else {
     userIp = tempIp;
   }
 }
 
-// console.log("IP: " + userIp);
-
+// Send the code to the main window
 ipcMain.on("getCode", (event, arg) => {
   event.reply("code", userIp);
 });
 
-function stopServer() {
-  server.close(() => {
-    console.log("Servidor http detenido");
-    io.close(() => {
-      console.log("Servidor Socket.io detenido");
-    });
-  });
+// We reset the variables and start the "run()" process again
+function reset() {
+  console.log("Resetting...");
+  lockData = null;
+  helpData = null;
+  sessionData = null;
+  lastRetryMessage = 0;
+
+  token = null;
+  entitlement = null;
+  puuid = null;
+  pid = null;
+  region = null;
+  shard = null;
+  clientVersion = null;
+  partyId = null;
+  party = null;
+  partyOld = null;
+  gameModes = null;
+  preGameId = null;
+  pregame = null;
+  pregameOld = null;
+  currentMatch = null;
+  playerContracts = null;
+  userIp = null;
+
+  run();
 }
 
 const localAgent = new https.Agent({
@@ -310,29 +358,6 @@ async function getPUUID(port, password) {
     .catch((err) => console.error("error:" + err));
 }
 
-async function getWallet() {
-  let url = `https://pd.na.a.pvp.net/store/v1/wallet/${puuid}`;
-  let wallet = null;
-
-  let options = {
-    method: "GET",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:149 ~ getWallet ~ url:", url);
-      wallet = json;
-    })
-    .catch((err) => console.error("error:" + err));
-
-  return wallet;
-}
-
 async function getVersion() {
   let url = "https://valorant-api.com/v1/version";
 
@@ -416,6 +441,15 @@ async function getPartyPlayer() {
 }
 
 async function getParty() {
+  if (
+    !partyId ||
+    partyId == null ||
+    partyId == undefined ||
+    partyId == "undefined"
+  ) {
+    await getPartyPlayer();
+    return;
+  }
   let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}`;
 
   let options = {
@@ -634,8 +668,8 @@ async function run() {
   globalSocket?.emit("console", state);
   console.log("Got lock data...");
 
-  let sessionData = null;
-  let lastRetryMessage = 0;
+  sessionData = null;
+  lastRetryMessage = 0;
   do {
     try {
       sessionData = await getSession(lockData.port, lockData.password);
@@ -654,7 +688,7 @@ async function run() {
     }
   } while (sessionData === null);
 
-  let helpData = null;
+  helpData = null;
   do {
     helpData = await getHelp(lockData.port, lockData.password);
     if (!helpData.events.hasOwnProperty("OnJsonApiEvent_chat_v4_presences")) {
@@ -670,9 +704,9 @@ async function run() {
   globalSocket?.emit("console", state);
   console.log("Got PUUID...");
 
-  try {
-    await fs.promises.mkdir("./logs");
-  } catch (ignored) {}
+  // try {
+  //   await fs.promises.mkdir("./logs");
+  // } catch (ignored) {}
   // const logPath = `./logs/${new Date().getTime()}.txt`;
   // console.log(`Writing to ${logPath}`);
 
@@ -789,28 +823,50 @@ async function run() {
     console.log("Websocket closed!");
     globalSocket?.emit("disconnected");
     win.webContents.send("message", "Game closed.");
-    // logStream.end();
-    stopServer();
+    globalSocket?.disconnect();
+    reset();
   });
 }
 
 getUserIp();
 
+// We update some variables every 20 minutes (it's just a test since from time to time the connection is lost)
+setInterval(async () => {
+  if(!lockData || lockData === null ) return;
+  await getEntitlementsToken(lockData.port, lockData.password);
+  await getPUUID(lockData.port, lockData.password);
+  await getPartyPlayer();
+  await getParty();
+}, 20 * 60000);
+
+// Connection with mobile app through websocket (socket.io)
 io.on("connection", async (socket) => {
-  globalSocket = socket;
+  globalSocket = socket; // we make the socket accessible from anywhere in the code
+
   console.log("Usuario conectado");
   socket.emit("connected");
 
+  // We check if the server has the necessary data to connect with the user
+  if (!lockData || lockAgent === null || helpData === null || puuid === null) {
+    socket.emit("noLockData");
+    socket.emit("disconnected");
+    socket.disconnect();
+    return;
+  }
+
+  // get the current party of the user
+  await getPartyPlayer();
+  await getParty();
+
   socket.emit("console", state);
 
+  // We send the data to the mobile app
   puuid && socket.emit("puuid", puuid);
-
   gameModes && socket.emit("gamemodes", gameModes);
-
   party && socket.emit("party", party);
-
   playerContracts && socket.emit("playerContracts", playerContracts);
 
+  // here orders are received from the mobile app
   socket.on("updateData", () => {
     puuid && socket.emit("puuid", puuid);
     gameModes && socket.emit("gamemodes", gameModes);
@@ -869,6 +925,7 @@ io.on("connection", async (socket) => {
   });
 });
 
+// We start the server
 server.listen(PORT, () => {
   console.log(`Servidor corriendo en el puerto ${PORT}`);
 });

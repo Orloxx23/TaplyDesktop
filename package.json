@@ -1,5 +1,5 @@
 {
-  "name": "valorremote",
+  "name": "taply",
   "version": "1.0.0",
   "description": "Take your Valorant gaming experience to the next level with ValorRemote, the ultimate remote control application for Valorant players. Now you can control your Valorant game from anywhere, anytime, right from your phone.",
   "main": "index.js",
@@ -11,7 +11,7 @@
     "make": "electron-forge make"
   },
   "keywords": [],
-  "author": "orloxx",
+  "author": "Orloxx",
   "license": "ISC",
   "dependencies": {
     "cors": "^2.8.5",
