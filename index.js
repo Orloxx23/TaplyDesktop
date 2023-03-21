@@ -200,15 +200,19 @@ let userIp = null;
 
 // We get the user's IP
 function getUserIp() {
-  const ethernetIp = osIp.networkInterfaces()['Ethernet'];
-  const wifiIp = osIp.networkInterfaces()['Wi-Fi'];
+  const ethernetIp = osIp.networkInterfaces()["Ethernet"];
+  const wifiIp = osIp.networkInterfaces()["Wi-Fi"];
 
-  if (wifiIp && ip.isPrivate(wifiIp[1].address)) {
-    userIp = wifiIp[1].address;
+  const ethernetIpv4 =
+    ethernetIp && ethernetIp.find((ip) => ip.family === "IPv4");
+  const wifiIpv4 = wifiIp && wifiIp.find((ip) => ip.family === "IPv4");
+
+  if (wifiIpv4 && ip.isPrivate(wifiIpv4.address)) {
+    userIp = wifiIpv4.address;
   }
 
-  if (ethernetIp && ip.isPrivate(ethernetIp[1].address)) {
-    userIp = ethernetIp[1].address;
+  if (ethernetIpv4 && ip.isPrivate(ethernetIpv4.address)) {
+    userIp = ethernetIpv4.address;
   }
 
   if (!userIp) {
@@ -842,7 +846,7 @@ getUserIp();
 
 // We update some variables every 20 minutes (it's just a test since from time to time the connection is lost)
 setInterval(async () => {
-  if(!lockData || lockData === null ) return;
+  if (!lockData || lockData === null) return;
   await getEntitlementsToken(lockData.port, lockData.password);
   await getPUUID(lockData.port, lockData.password);
   await getPartyPlayer();
