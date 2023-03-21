@@ -11,6 +11,8 @@ const isEqual = require("lodash/isEqual");
 
 const ip = require("ip");
 
+const osIp = require("os");
+
 const { app, BrowserWindow, Tray, Notification, screen } = require("electron");
 const { ipcMain } = require("electron");
 const { Menu } = require("electron");
@@ -198,11 +200,19 @@ let userIp = null;
 
 // We get the user's IP
 function getUserIp() {
-  const tempIp = ip.address();
-  if (!tempIp.includes("192")) {
-    getUserIp();
-  } else {
-    userIp = tempIp;
+  const ethernetIp = osIp.networkInterfaces()['Ethernet'];
+  const wifiIp = osIp.networkInterfaces()['Wi-Fi'];
+
+  if (wifiIp && ip.isPrivate(wifiIp[1].address)) {
+    userIp = wifiIp[1].address;
+  }
+
+  if (ethernetIp && ip.isPrivate(ethernetIp[1].address)) {
+    userIp = ethernetIp[1].address;
+  }
+
+  if (!userIp) {
+    // If the user is not connected to the internet, show the error message
   }
 }
 
