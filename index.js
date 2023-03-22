@@ -484,6 +484,25 @@ async function getParty() {
     .catch((err) => console.error("error:" + err));
 }
 
+async function leaveParty() {
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/players/${puuid}`;
+
+  let options = {
+    method: "DELETE",
+    headers: {
+      "X-Riot-Entitlements-JWT": entitlement,
+      Authorization: "Bearer " + token,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      console.log("✅ ~ file: index.js:488 ~ getParty ~ url:", url);
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
 async function changeQueue(gamemode) {
   let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/queue`;
 
@@ -820,6 +839,7 @@ async function run() {
     if (eventName === "OnJsonApiEvent_chat_v4_presences") {
       if (event.data.presences[0].puuid !== puuid) return;
 
+      await getPartyPlayer();
       await getParty();
 
       partyOld = party;
@@ -926,6 +946,11 @@ io.on("connection", async (socket) => {
   socket.on("dodge", async () => {
     console.log("dodge");
     await dodge();
+  });
+
+  socket.on("leaveParty", async () => {
+    console.log("leaveParty");
+    await leaveParty();
   });
 
   socket.on("disconnect", () => {
