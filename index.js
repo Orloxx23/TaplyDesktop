@@ -197,6 +197,7 @@ let pregameOld = null;
 let currentMatch = null;
 let playerContracts = null;
 let userIp = null;
+let friends = null;
 
 // We get the user's IP
 function getUserIp() {
@@ -679,6 +680,51 @@ async function dodge() {
     .catch((err) => console.error("error:" + err));
 }
 
+async function getFriends() {
+  let url = `https://127.0.0.1:${lockData.port}/chat/v4/presences`;
+  const username = "riot";
+
+  let options = {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${Buffer.from(
+        username + ":" + lockData.password
+      ).toString("base64")}`,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      const tempFirends = json.presences;
+      friends = tempFirends
+        .filter((friend) => friend.product === "valorant")
+        .filter((friend) => friend.puuid !== puuid);
+      globalSocket?.emit("friends", friends);
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
+async function inviteFriend(name, tag) {
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/invites/name/${name}/tag/${tag}`;
+
+  let options = {
+    method: "POST",
+    headers: {
+      "X-Riot-Entitlements-JWT": entitlement,
+      "X-Riot-ClientVersion": clientVersion,
+      Authorization: "Bearer " + token,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      console.log("✅ ~ file: index.js:709 ~ inviteFriend ~ url:", url);
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
 let state = "Loading...";
 let globalSocket = null;
 
@@ -951,6 +997,16 @@ io.on("connection", async (socket) => {
   socket.on("leaveParty", async () => {
     console.log("leaveParty");
     await leaveParty();
+  });
+
+  socket.on("getFriends", async () => {
+    console.log("getFriends");
+    await getFriends();
+  });
+
+  socket.on("invite", async (data) => {
+    console.log("invite");
+    await inviteFriend(data.name, data.tag);
   });
 
   socket.on("disconnect", () => {
