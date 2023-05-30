@@ -8,6 +8,7 @@ const https = require("https");
 const fetch = require("node-fetch");
 const WebSocket = require("ws");
 const isEqual = require("lodash/isEqual");
+require('update-electron-app')()
 
 const ip = require("ip");
 
@@ -16,6 +17,8 @@ const osIp = require("os");
 const { app, BrowserWindow, Tray, Notification, screen } = require("electron");
 const { ipcMain } = require("electron");
 const { Menu } = require("electron");
+
+require('dotenv').config()
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -197,18 +200,39 @@ let pregameOld = null;
 let currentMatch = null;
 let playerContracts = null;
 let userIp = null;
+let friends = null;
+
+// Convert an IP address to hexadecimal and generate the code
+function ipToHex(ipAddress) {
+  let hex = "";
+  const octetos = ipAddress.split(".");
+  for (let i = 0; i < octetos.length; i++) {
+    let octetoHex = parseInt(octetos[i]).toString(16);
+    if (octetoHex.length === 1) {
+      octetoHex = "0" + octetoHex;
+    }
+    hex += octetoHex;
+  }
+
+  const code = hex.slice(4)
+  return code;
+}
 
 // We get the user's IP
 function getUserIp() {
-  const ethernetIp = osIp.networkInterfaces()['Ethernet'];
-  const wifiIp = osIp.networkInterfaces()['Wi-Fi'];
+  const ethernetIp = osIp.networkInterfaces()["Ethernet"];
+  const wifiIp = osIp.networkInterfaces()["Wi-Fi"];
 
-  if (wifiIp && ip.isPrivate(wifiIp[1].address)) {
-    userIp = wifiIp[1].address;
+  const ethernetIpv4 =
+    ethernetIp && ethernetIp.find((ip) => ip.family === "IPv4");
+  const wifiIpv4 = wifiIp && wifiIp.find((ip) => ip.family === "IPv4");
+
+  if (wifiIpv4 && ip.isPrivate(wifiIpv4.address)) {
+    userIp = wifiIpv4.address;
   }
 
-  if (ethernetIp && ip.isPrivate(ethernetIp[1].address)) {
-    userIp = ethernetIp[1].address;
+  if (ethernetIpv4 && ip.isPrivate(ethernetIpv4.address)) {
+    userIp = ethernetIpv4.address;
   }
 
   if (!userIp) {
@@ -218,7 +242,7 @@ function getUserIp() {
 
 // Send the code to the main window
 ipcMain.on("getCode", (event, arg) => {
-  event.reply("code", userIp);
+  event.reply("code", ipToHex(userIp));
 });
 
 // We reset the variables and start the "run()" process again
@@ -480,6 +504,25 @@ async function getParty() {
     .catch((err) => console.error("error:" + err));
 }
 
+async function leaveParty() {
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/players/${puuid}`;
+
+  let options = {
+    method: "DELETE",
+    headers: {
+      "X-Riot-Entitlements-JWT": entitlement,
+      Authorization: "Bearer " + token,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      console.log("✅ ~ file: index.js:488 ~ getParty ~ url:", url);
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
 async function changeQueue(gamemode) {
   let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/queue`;
 
@@ -656,6 +699,51 @@ async function dodge() {
     .catch((err) => console.error("error:" + err));
 }
 
+async function getFriends() {
+  let url = `https://127.0.0.1:${lockData.port}/chat/v4/presences`;
+  const username = "riot";
+
+  let options = {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${Buffer.from(
+        username + ":" + lockData.password
+      ).toString("base64")}`,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      const tempFirends = json.presences;
+      friends = tempFirends
+        .filter((friend) => friend.product === "valorant")
+        .filter((friend) => friend.puuid !== puuid);
+      globalSocket?.emit("friends", friends);
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
+async function inviteFriend(name, tag) {
+  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/invites/name/${name}/tag/${tag}`;
+
+  let options = {
+    method: "POST",
+    headers: {
+      "X-Riot-Entitlements-JWT": entitlement,
+      "X-Riot-ClientVersion": clientVersion,
+      Authorization: "Bearer " + token,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      console.log("✅ ~ file: index.js:709 ~ inviteFriend ~ url:", url);
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
 let state = "Loading...";
 let globalSocket = null;
 
@@ -816,6 +904,7 @@ async function run() {
     if (eventName === "OnJsonApiEvent_chat_v4_presences") {
       if (event.data.presences[0].puuid !== puuid) return;
 
+      await getPartyPlayer();
       await getParty();
 
       partyOld = party;
@@ -842,7 +931,7 @@ getUserIp();
 
 // We update some variables every 20 minutes (it's just a test since from time to time the connection is lost)
 setInterval(async () => {
-  if(!lockData || lockData === null ) return;
+  if (!lockData || lockData === null) return;
   await getEntitlementsToken(lockData.port, lockData.password);
   await getPUUID(lockData.port, lockData.password);
   await getPartyPlayer();
@@ -922,6 +1011,21 @@ io.on("connection", async (socket) => {
   socket.on("dodge", async () => {
     console.log("dodge");
     await dodge();
+  });
+
+  socket.on("leaveParty", async () => {
+    console.log("leaveParty");
+    await leaveParty();
+  });
+
+  socket.on("getFriends", async () => {
+    console.log("getFriends");
+    await getFriends();
+  });
+
+  socket.on("invite", async (data) => {
+    console.log("invite");
+    await inviteFriend(data.name, data.tag);
   });
 
   socket.on("disconnect", () => {
