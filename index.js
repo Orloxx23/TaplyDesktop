@@ -199,6 +199,22 @@ let playerContracts = null;
 let userIp = null;
 let friends = null;
 
+// Convert an IP address to hexadecimal and generate the code
+function ipToHex(ipAddress) {
+  let hex = "";
+  const octetos = ipAddress.split(".");
+  for (let i = 0; i < octetos.length; i++) {
+    let octetoHex = parseInt(octetos[i]).toString(16);
+    if (octetoHex.length === 1) {
+      octetoHex = "0" + octetoHex;
+    }
+    hex += octetoHex;
+  }
+
+  const code = hex.slice(4)
+  return code;
+}
+
 // We get the user's IP
 function getUserIp() {
   const ethernetIp = osIp.networkInterfaces()["Ethernet"];
@@ -223,7 +239,7 @@ function getUserIp() {
 
 // Send the code to the main window
 ipcMain.on("getCode", (event, arg) => {
-  event.reply("code", userIp);
+  event.reply("code", ipToHex(userIp));
 });
 
 // We reset the variables and start the "run()" process again
