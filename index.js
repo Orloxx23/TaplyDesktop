@@ -8,6 +8,7 @@ const https = require("https");
 const fetch = require("node-fetch");
 const WebSocket = require("ws");
 const isEqual = require("lodash/isEqual");
+require('update-electron-app')()
 
 const ip = require("ip");
 
@@ -16,6 +17,8 @@ const osIp = require("os");
 const { app, BrowserWindow, Tray, Notification, screen } = require("electron");
 const { ipcMain } = require("electron");
 const { Menu } = require("electron");
+
+require('dotenv').config()
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 

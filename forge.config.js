@@ -30,4 +30,17 @@ module.exports = {
       config: {},
     },
   ],
+  publishers: [
+    {
+      name: '@electron-forge/publisher-github',
+      config: {
+        repository: {
+          owner: 'Orloxx23',
+          name: 'TaplyDesktop',
+          authToken: process.env.GITHUB_TOKEN
+        },
+        prerelease: true
+      }
+    }
+  ],
 };
