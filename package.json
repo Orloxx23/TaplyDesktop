@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "electron-forge start",
-    "dev": "nodemon .",
+    "dev": "electron .",
     "view": "electron .",
     "package": "electron-forge package",
     "make": "electron-forge make"
