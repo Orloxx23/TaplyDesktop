@@ -36,8 +36,11 @@ npm install
 npm run dev
 ```
 
-  
-  
+<h2>How it works</h2>
+
+* [Valorant API Docs](https://techchrism.github.io/valorant-api-docs/)
+* [ValorantClient API](https://github.com/HeyM1ke/ValorantClientAPI)
+
 <h2>💻 Built with</h2>
 
 Technologies used in the project:
