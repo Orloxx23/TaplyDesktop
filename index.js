@@ -381,8 +381,8 @@ async function getPUUID(port, password) {
       if (json.region.includes("la")) {
         region = "latam";
         shard = "na";
-      } else if (json.region === "br") {
-        region = json.region;
+      } else if (json.region.includes("br")) {
+        region = "br";
         shard = "na";
       } else {
         region = json.region;
