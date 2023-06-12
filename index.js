@@ -8,7 +8,7 @@ const https = require("https");
 const fetch = require("node-fetch");
 const WebSocket = require("ws");
 const isEqual = require("lodash/isEqual");
-require('update-electron-app')()
+require("update-electron-app")();
 
 const ip = require("ip");
 
@@ -18,7 +18,7 @@ const { app, BrowserWindow, Tray, Notification, screen } = require("electron");
 const { ipcMain } = require("electron");
 const { Menu } = require("electron");
 
-require('dotenv').config()
+require("dotenv").config();
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -214,7 +214,7 @@ function ipToHex(ipAddress) {
     hex += octetoHex;
   }
 
-  const code = hex.slice(4)
+  const code = hex.slice(4);
   return code;
 }
 
@@ -358,6 +358,39 @@ async function getEntitlementsToken(port, password) {
     .catch((err) => console.error("error:" + err));
 }
 
+async function getRegionAndShard(port, password) {
+  let url = `https://127.0.0.1:${port}/product-session/v1/external-sessions`;
+  const username = "riot";
+
+  let options = {
+    method: "GET",
+    headers: {
+      Authorization: `Basic ${Buffer.from(username + ":" + password).toString(
+        "base64"
+      )}`,
+    },
+  };
+
+  fetch(url, options)
+    .then((res) => res.json())
+    .then((json) => {
+      const first = Object.keys(json)[0];
+      const tmpRegion = json[first].launchConfiguration.arguments[4].split("=")[1];
+      region = tmpRegion;
+      if (tmpRegion.includes("la")) {
+        region = "latam";
+        shard = "na";
+      } else if (tmpRegion.includes("br")) {
+        region = "br";
+        shard = "na";
+      } else {
+        region = tmpRegion;
+        shard = tmpRegion;
+      }
+    })
+    .catch((err) => console.error("error:" + err));
+}
+
 async function getPUUID(port, password) {
   console.log("getting puuid");
 
@@ -378,7 +411,7 @@ async function getPUUID(port, password) {
     .then((json) => {
       puuid = json.puuid;
       pid = json.pid;
-      if (json.region.includes("la")) {
+      /*if (json.region.includes("la")) {
         region = "latam";
         shard = "na";
       } else if (json.region.includes("br")) {
@@ -387,7 +420,7 @@ async function getPUUID(port, password) {
       } else {
         region = json.region;
         shard = json.region;
-      }
+      }*/
     })
     .catch((err) => console.error("error:" + err));
 }
@@ -832,6 +865,7 @@ async function run() {
 
     await getVersion();
     await getEntitlementsToken(lockData.port, lockData.password);
+    await getRegionAndShard(lockData.port, lockData.password);
     await getPUUID(lockData.port, lockData.password);
     await getPartyPlayer();
     await getPlayerContracts();
@@ -933,6 +967,7 @@ getUserIp();
 setInterval(async () => {
   if (!lockData || lockData === null) return;
   await getEntitlementsToken(lockData.port, lockData.password);
+  await getRegionAndShard(lockData.port, lockData.password);
   await getPUUID(lockData.port, lockData.password);
   await getPartyPlayer();
   await getParty();
