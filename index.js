@@ -2,10 +2,7 @@ const express = require("express");
 const appServer = express();
 let server = require("http").Server(appServer);
 let io = require("socket.io")(server);
-const fs = require("fs");
 const path = require("path");
-const https = require("https");
-const fetch = require("node-fetch");
 const WebSocket = require("ws");
 const isEqual = require("lodash/isEqual");
 require("update-electron-app")();
@@ -17,6 +14,8 @@ const osIp = require("os");
 const { app, BrowserWindow, Tray, Notification, screen } = require("electron");
 const { ipcMain } = require("electron");
 const { Menu } = require("electron");
+const getInstance = require("./src/functions/UserData");
+const userdata = getInstance();
 
 require("dotenv").config();
 
@@ -178,30 +177,6 @@ if (!isSingleInstance) {
 
 /* ----- */
 
-let lockData = null;
-let helpData = null;
-let sessionData = null;
-let lastRetryMessage = 0;
-
-let token = null;
-let entitlement = null;
-let puuid = null;
-let pid = null;
-let region = null;
-let shard = null;
-let clientVersion = null;
-let partyId = null;
-let party = null;
-let partyOld = null;
-let gameModes = null;
-let preGameId = null;
-let pregame = null;
-let pregameOld = null;
-let currentMatch = null;
-let playerContracts = null;
-let userIp = null;
-let friends = null;
-
 // Convert an IP address to hexadecimal and generate the code
 function ipToHex(ipAddress) {
   let hex = "";
@@ -246,590 +221,66 @@ ipcMain.on("getCode", (event, arg) => {
 });
 
 // We reset the variables and start the "run()" process again
-function reset() {
-  console.log("Resetting...");
-  lockData = null;
-  helpData = null;
-  sessionData = null;
-  lastRetryMessage = 0;
-
-  token = null;
-  entitlement = null;
-  puuid = null;
-  pid = null;
-  region = null;
-  shard = null;
-  clientVersion = null;
-  partyId = null;
-  party = null;
-  partyOld = null;
-  gameModes = null;
-  preGameId = null;
-  pregame = null;
-  pregameOld = null;
-  currentMatch = null;
-  playerContracts = null;
-  userIp = null;
-
+function reset() { 
+  userdata.resetVariables();
   run();
-}
-
-const localAgent = new https.Agent({
-  rejectUnauthorized: false,
-});
-
-async function asyncTimeout(delay) {
-  return new Promise((resolve) => {
-    setTimeout(resolve, delay);
-  });
-}
-
-async function getLockfileData() {
-  const lockfilePath = path.join(
-    process.env["LOCALAPPDATA"],
-    "Riot Games\\Riot Client\\Config\\lockfile"
-  );
-  const contents = await fs.promises.readFile(lockfilePath, "utf8");
-  let d = {};
-  [d.name, d.pid, d.port, d.password, d.protocol] = contents.split(":");
-  return d;
-}
-
-async function waitForLockfile() {
-  return new Promise(async (resolve, reject) => {
-    const watcher = fs.watch(
-      path.join(
-        process.env["LOCALAPPDATA"],
-        "Riot Games\\Riot Client\\Config\\"
-      ),
-      (eventType, fileName) => {
-        if (eventType === "rename" && fileName === "lockfile") {
-          watcher.close();
-          resolve();
-        }
-      }
-    );
-  });
-}
-
-async function getSession(port, password) {
-  return (
-    await fetch(`https://127.0.0.1:${port}/chat/v1/session`, {
-      headers: {
-        Authorization:
-          "Basic " + Buffer.from(`riot:${password}`).toString("base64"),
-      },
-      agent: localAgent,
-    })
-  ).json();
-}
-
-async function getHelp(port, password) {
-  return (
-    await fetch(`https://127.0.0.1:${port}/help`, {
-      headers: {
-        Authorization:
-          "Basic " + Buffer.from(`riot:${password}`).toString("base64"),
-      },
-      agent: localAgent,
-    })
-  ).json();
-}
-
-async function getEntitlementsToken(port, password) {
-  let url = `https://127.0.0.1:${port}/entitlements/v1/token`;
-  const username = "riot";
-
-  let options = {
-    method: "GET",
-    headers: {
-      Authorization: `Basic ${Buffer.from(username + ":" + password).toString(
-        "base64"
-      )}`,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      entitlement = json.token;
-      token = json.accessToken;
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getRegionAndShard(port, password) {
-  let url = `https://127.0.0.1:${port}/product-session/v1/external-sessions`;
-  const username = "riot";
-
-  let options = {
-    method: "GET",
-    headers: {
-      Authorization: `Basic ${Buffer.from(username + ":" + password).toString(
-        "base64"
-      )}`,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      const first = Object.keys(json)[0];
-      const tmpRegion = json[first].launchConfiguration.arguments[4].split("=")[1];
-      region = tmpRegion;
-      if (tmpRegion.includes("la")) {
-        region = "latam";
-        shard = "na";
-      } else if (tmpRegion.includes("br")) {
-        region = "br";
-        shard = "na";
-      } else {
-        region = tmpRegion;
-        shard = tmpRegion;
-      }
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getPUUID(port, password) {
-  console.log("getting puuid");
-
-  let url = `https://127.0.0.1:${port}/chat/v1/session`;
-  const username = "riot";
-
-  let options = {
-    method: "GET",
-    headers: {
-      Authorization: `Basic ${Buffer.from(username + ":" + password).toString(
-        "base64"
-      )}`,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      puuid = json.puuid;
-      pid = json.pid;
-      /*if (json.region.includes("la")) {
-        region = "latam";
-        shard = "na";
-      } else if (json.region.includes("br")) {
-        region = "br";
-        shard = "na";
-      } else {
-        region = json.region;
-        shard = json.region;
-      }*/
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getVersion() {
-  let url = "https://valorant-api.com/v1/version";
-
-  let options = { method: "GET" };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:184 ~ getVersion ~ url:", url);
-      clientVersion = json.data.riotClientVersion;
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getPregame() {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/players/${puuid}`;
-
-  let options = {
-    method: "GET",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      "X-Riot-ClientVersion": clientVersion,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then(async (json) => {
-      console.log("✅ ~ file: index.js:198 ~ getPreGameMatch ~ url:", url);
-      preGameId = json.MatchID;
-      await getPreGameMatch();
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getPreGameMatch() {
-  if (preGameId == null) return;
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}`;
-
-  let options = {
-    method: "GET",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      pregame = {
-        map: json.MapID,
-        team: json.AllyTeam.Players,
-        queue: json.QueueID,
-      };
-      console.log("✅ ~ file: index.js:221 ~ getPreGameMatch ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getPartyPlayer() {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/players/${puuid}`;
-
-  let options = {
-    method: "GET",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      "X-Riot-ClientVersion": clientVersion,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:195 ~ getPartyPlayer ~ url:", url);
-      partyId = json.CurrentPartyID;
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getParty() {
-  if (
-    !partyId ||
-    partyId == null ||
-    partyId == undefined ||
-    partyId == "undefined"
-  ) {
-    await getPartyPlayer();
-    return;
-  }
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}`;
-
-  let options = {
-    method: "GET",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      gameModes = json.EligibleQueues;
-      party = json;
-      console.log("✅ ~ file: index.js:225 ~ getParty ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function leaveParty() {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/players/${puuid}`;
-
-  let options = {
-    method: "DELETE",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:488 ~ getParty ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function changeQueue(gamemode) {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/queue`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      "content-type": "application/json",
-      Authorization: "Bearer " + token,
-    },
-    body: `{"queueID":"${gamemode}"}}`,
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) =>
-      console.log("✅ ~ file: index.js:240 ~ changeQueue ~ url:", url)
-    )
-    .catch((err) => console.error("error:" + err));
-}
-
-async function startQueue() {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/matchmaking/join`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:255 ~ startQueue ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function stopQueue() {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/matchmaking/leave`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:255 ~ stopQueue ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function partyAccessibility(access) {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/accessibility`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      "content-type": "application/json",
-      Authorization: "Bearer " + token,
-    },
-    body: `{"accessibility":"${access}"}}`,
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) =>
-      console.log("✅ ~ file: index.js:309 ~ partyAccessibility ~ url:", url)
-    )
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getCurrentMatch() {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/core-game/v1/players/${puuid}`;
-
-  let options = {
-    method: "GET",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      globalSocket?.emit("inGame", json.MatchID);
-      currentMatch = json.MatchID;
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getPlayerContracts() {
-  let url = `https://pd.${shard}.a.pvp.net/contracts/v1/contracts/${puuid}`;
-
-  let options = {
-    method: "GET",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      "X-Riot-ClientVersion": clientVersion,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  await fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      playerContracts = json;
-      console.log("✅ ~ file: index.js:391 ~ getPlayerContracts ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function selectAgent(agent) {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}/select/${agent}`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:379 ~ selectAgent ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function lockAgent(agent) {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}/lock/${agent}`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) =>
-      console.log("✅ ~ file: index.js:387 ~ lockAgent ~ url:", url)
-    )
-    .catch((err) => console.error("error:" + err));
-}
-
-async function dodge() {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/pregame/v1/matches/${preGameId}/quit`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => console.log(json))
-    .catch((err) => console.error("error:" + err));
-}
-
-async function getFriends() {
-  let url = `https://127.0.0.1:${lockData.port}/chat/v4/presences`;
-  const username = "riot";
-
-  let options = {
-    method: "GET",
-    headers: {
-      Authorization: `Basic ${Buffer.from(
-        username + ":" + lockData.password
-      ).toString("base64")}`,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      const tempFirends = json.presences;
-      friends = tempFirends
-        .filter((friend) => friend.product === "valorant")
-        .filter((friend) => friend.puuid !== puuid);
-      globalSocket?.emit("friends", friends);
-    })
-    .catch((err) => console.error("error:" + err));
-}
-
-async function inviteFriend(name, tag) {
-  let url = `https://glz-${region}-1.${shard}.a.pvp.net/parties/v1/parties/${partyId}/invites/name/${name}/tag/${tag}`;
-
-  let options = {
-    method: "POST",
-    headers: {
-      "X-Riot-Entitlements-JWT": entitlement,
-      "X-Riot-ClientVersion": clientVersion,
-      Authorization: "Bearer " + token,
-    },
-  };
-
-  fetch(url, options)
-    .then((res) => res.json())
-    .then((json) => {
-      console.log("✅ ~ file: index.js:709 ~ inviteFriend ~ url:", url);
-    })
-    .catch((err) => console.error("error:" + err));
 }
 
 let state = "Loading...";
 let globalSocket = null;
 
 async function run() {
-  lockData = null;
+  userdata.lockData = null;
   win.webContents.send("message", "Waiting for the game to start...");
   do {
     try {
-      lockData = await getLockfileData();
+      userdata.lockData = await userdata.getLockfileData();
     } catch (e) {
       state = "Waiting for lockfile...";
       globalSocket?.emit("console", state);
       console.log("Waiting for lockfile...");
-      await waitForLockfile();
+      await userdata.waitForLockfile();
       win.webContents.send("message", "Waiting for the game to start...");
     }
-  } while (lockData === null);
+  } while (userdata.lockData === null);
 
   state = "Got lock data...";
   globalSocket?.emit("console", state);
   console.log("Got lock data...");
 
-  sessionData = null;
-  lastRetryMessage = 0;
+  userdata.sessionData = null;
+  userdata.lastRetryMessage = 0;
+  console.log("🚀 ~ file: index.js:787 ~ run ~ lastRetryMessage:", userdata.lastRetryMessage)
   do {
     try {
-      sessionData = await getSession(lockData.port, lockData.password);
-      if (sessionData.loaded === false) {
-        await asyncTimeout(1500);
-        sessionData = null;
+      userdata.sessionData = await userdata.getSession(userdata.lockData.port, userdata.lockData.password);
+      if (userdata.sessionData.loaded === false) {
+        await userdata.asyncTimeout(1500);
+        userdata.sessionData = null;
       }
     } catch (e) {
       const currentTime = new Date().getTime();
-      if (currentTime - lastRetryMessage > 1000) {
+      // console.error(e);
+      if (currentTime - userdata.lastRetryMessage > 1000) {
         state = "Unable to get session data, retrying...";
         globalSocket?.emit("console", state);
         console.log("Unable to get session data, retrying...");
-        lastRetryMessage = currentTime;
+        userdata.lastRetryMessage = currentTime;
       }
     }
-  } while (sessionData === null);
+  } while (userdata.sessionData === null);
 
-  helpData = null;
+  userdata.helpData = null;
   do {
-    helpData = await getHelp(lockData.port, lockData.password);
-    if (!helpData.events.hasOwnProperty("OnJsonApiEvent_chat_v4_presences")) {
+    userdata.helpData = await userdata.getHelp(userdata.lockData.port, userdata.lockData.password);
+    if (!userdata.helpData.events.hasOwnProperty("OnJsonApiEvent_chat_v4_presences")) {
       state = "Retrying help data events...";
       globalSocket?.emit("console", state);
       console.log("Retrying help data events...");
-      helpData = null;
+      userdata.helpData = null;
       await asyncTimeout(1500);
     }
-  } while (helpData === null);
+  } while (userdata.helpData === null);
 
   state = "Got PUUID...";
   globalSocket?.emit("console", state);
@@ -842,19 +293,19 @@ async function run() {
   // console.log(`Writing to ${logPath}`);
 
   // const logStream = fs.createWriteStream(logPath);
-  // logStream.write(JSON.stringify(lockData) + "\n");
+  // logStream.write(JSON.stringify(userdata.lockData) + "\n");
   // logStream.write(JSON.stringify(sessionData) + "\n");
-  // logStream.write(JSON.stringify(helpData) + "\n\n");
+  // logStream.write(JSON.stringify(userdata.helpData) + "\n\n");
 
   const ws = new WebSocket(
-    `wss://riot:${lockData.password}@127.0.0.1:${lockData.port}`,
+    `wss://riot:${userdata.lockData.password}@127.0.0.1:${userdata.lockData.port}`,
     {
       rejectUnauthorized: false,
     }
   );
 
   ws.on("open", async () => {
-    Object.entries(helpData.events).forEach(([name, desc]) => {
+    Object.entries(userdata.helpData.events).forEach(([name, desc]) => {
       if (name === "OnJsonApiEvent") return;
       ws.send(JSON.stringify([5, name]));
     });
@@ -863,19 +314,19 @@ async function run() {
     console.log("Connected to websocket!");
     globalSocket?.emit("connected");
 
-    await getVersion();
-    await getEntitlementsToken(lockData.port, lockData.password);
-    await getRegionAndShard(lockData.port, lockData.password);
-    await getPUUID(lockData.port, lockData.password);
-    await getPartyPlayer();
-    await getPlayerContracts();
+    await userdata.getVersion();
+    await userdata.getEntitlementsToken(userdata.lockData.port, userdata.lockData.password);
+    await userdata.getRegionAndShard(userdata.lockData.port, userdata.lockData.password);
+    await userdata.getPUUID(userdata.lockData.port, userdata.lockData.password);
+    await userdata.getPartyPlayer();
+    await userdata.getPlayerContracts();
 
     // To do...
-    if (partyId) {
-      await getParty();
+    if (userdata.partyId) {
+      await userdata.getParty();
     } else {
-      await getPartyPlayer();
-      await getParty();
+      await userdata.getPartyPlayer();
+      await userdata.getParty();
     }
 
     win.webContents.send("message", "Available.");
@@ -888,7 +339,7 @@ async function run() {
       data.toString().length > 0 ? JSON.parse(data?.toString()) : null;
     if (dataString === null) return;
 
-    const eventType = dataString[0];
+    // const eventType = dataString[0];
     const eventName = dataString[1];
     const event = dataString[2];
 
@@ -901,19 +352,19 @@ async function run() {
             "/riot-messaging-service/v1/message/ares-pregame/pregame/v1/matches/"
           )
         ) {
-          await getPregame();
-          console.info("preGameId", preGameId);
-          if (preGameId === null || preGameId === undefined) {
+          await userdata.getPregame();
+          console.info("userdata.preGameId", userdata.preGameId);
+          if (userdata.preGameId === null || userdata.preGameId === undefined) {
             globalSocket?.emit("preGameEvent", {
               preGameId: "undefined",
               pregame: "undefined",
             });
           }
-          if (isEqual(pregame?.team, pregameOld?.team)) return;
-          pregameOld = pregame;
+          if (isEqual(userdata.pregame?.team, userdata.pregameOld?.team)) return;
+          userdata.pregameOld = userdata.pregame;
           globalSocket?.emit("preGameEvent", {
-            preGameId: preGameId,
-            pregame: pregame,
+            preGameId: userdata.preGameId,
+            pregame: userdata.pregame,
           });
         }
       }
@@ -927,21 +378,21 @@ async function run() {
             "/riot-messaging-service/v1/message/ares-core-game/core-game/v1/matches/"
           )
         ) {
-          await getCurrentMatch();
+          await userdata.getCurrentMatch(globalSocket);
           // console.log("currentMatch", currentMatch);
-          globalSocket?.emit("inGame", currentMatch);
+          globalSocket?.emit("inGame", userdata.currentMatch);
         }
       }
     }
 
     /* Party, and chat events */
     if (eventName === "OnJsonApiEvent_chat_v4_presences") {
-      if (event.data.presences[0].puuid !== puuid) return;
+      if (event.data.presences[0].puuid !== userdata.puuid) return;
 
-      await getPartyPlayer();
-      await getParty();
+      await userdata.getPartyPlayer();
+      await userdata.getParty();
 
-      partyOld = party;
+      userdata.partyOld = userdata.party;
       globalSocket?.emit("updateData");
     }
 
@@ -965,12 +416,12 @@ getUserIp();
 
 // We update some variables every 20 minutes (it's just a test since from time to time the connection is lost)
 setInterval(async () => {
-  if (!lockData || lockData === null) return;
-  await getEntitlementsToken(lockData.port, lockData.password);
-  await getRegionAndShard(lockData.port, lockData.password);
-  await getPUUID(lockData.port, lockData.password);
-  await getPartyPlayer();
-  await getParty();
+  if (!userdata.lockData || userdata.lockData === null) return;
+  await userdata.getEntitlementsToken(userdata.lockData.port, userdata.lockData.password);
+  await userdata.getRegionAndShard(userdata.lockData.port, userdata.lockData.password);
+  await userdata.getPUUID(userdata.lockData.port, userdata.lockData.password);
+  await userdata.getPartyPlayer();
+  await userdata.getParty();
 }, 20 * 60000);
 
 // Connection with mobile app through websocket (socket.io)
@@ -981,7 +432,7 @@ io.on("connection", async (socket) => {
   socket.emit("connected");
 
   // We check if the server has the necessary data to connect with the user
-  if (!lockData || lockAgent === null || helpData === null || puuid === null) {
+  if (!userdata.lockData || userdata.lockAgent === null || userdata.helpData === null || userdata.puuid === null) {
     socket.emit("noLockData");
     socket.emit("disconnected");
     socket.disconnect();
@@ -989,78 +440,78 @@ io.on("connection", async (socket) => {
   }
 
   // get the current party of the user
-  await getPartyPlayer();
-  await getParty();
+  await userdata.getPartyPlayer();
+  await userdata.getParty();
 
   socket.emit("console", state);
 
   // We send the data to the mobile app
-  puuid && socket.emit("puuid", puuid);
-  gameModes && socket.emit("gamemodes", gameModes);
-  party && socket.emit("party", party);
-  playerContracts && socket.emit("playerContracts", playerContracts);
+  userdata.puuid && socket.emit("puuid", userdata.puuid);
+  userdata.gameModes && socket.emit("gamemodes", userdata.gameModes);
+  userdata.party && socket.emit("party", userdata.party);
+  userdata.playerContracts && socket.emit("playerContracts", userdata.playerContracts);
 
   // here orders are received from the mobile app
   socket.on("updateData", () => {
-    puuid && socket.emit("puuid", puuid);
-    gameModes && socket.emit("gamemodes", gameModes);
-    party && socket.emit("party", party);
-    playerContracts && socket.emit("playerContracts", playerContracts);
+    userdata.puuid && socket.emit("puuid", userdata.puuid);
+    userdata.gameModes && socket.emit("gamemodes", userdata.gameModes);
+    userdata.party && socket.emit("party", userdata.party);
+    userdata.playerContracts && socket.emit("playerContracts", userdata.playerContracts);
   });
 
   socket.on("setGamemode", async (data) => {
     console.log("setGamemode");
-    await changeQueue(data);
+    await userdata.changeQueue(data);
   });
 
   socket.on("startQueue", async () => {
     console.log("startQueue");
-    await startQueue();
+    await userdata.startQueue();
   });
 
   socket.on("stopQueue", async () => {
     console.log("stopQueue");
-    await stopQueue();
+    await userdata.stopQueue();
   });
 
   socket.on("partyAccess", async (data) => {
     console.log("partyAccess");
-    await partyAccessibility(data);
+    await userdata.partyAccessibility(data);
   });
 
   socket.on("selectAgent", async (data) => {
     console.log("selectAgent");
-    await selectAgent(data);
+    await userdata.selectAgent(data);
   });
 
   socket.on("lockAgent", async (data) => {
     console.log("lockAgent");
-    await lockAgent(data);
+    await userdata.lockAgent(data);
   });
 
   socket.on("isInGame", async () => {
     console.log("isInGame?");
-    await getCurrentMatch();
+    await userdata.getCurrentMatch(globalSocket);
   });
 
   socket.on("dodge", async () => {
     console.log("dodge");
-    await dodge();
+    await userdata.dodge();
   });
 
   socket.on("leaveParty", async () => {
     console.log("leaveParty");
-    await leaveParty();
+    await userdata.leaveParty();
   });
 
   socket.on("getFriends", async () => {
     console.log("getFriends");
-    await getFriends();
+    await userdata.getFriends(globalSocket);
   });
 
   socket.on("invite", async (data) => {
     console.log("invite");
-    await inviteFriend(data.name, data.tag);
+    await userdata.inviteFriend(data.name, data.tag);
   });
 
   socket.on("disconnect", () => {
