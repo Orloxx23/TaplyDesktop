@@ -201,6 +201,31 @@ class UserData {
       .catch((err) => console.error("error:" + err));
   }
 
+  async getPresence(port = this.lockData.port, password = this.lockData.password) {
+    console.log("\n\tgetting presence");
+    let url = `https://127.0.0.1:${port}/chat/v4/presences`;
+    const username = "riot";
+
+    let options = {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${Buffer.from(username + ":" + password).toString(
+          "base64"
+        )}`,
+      },
+    };
+
+    let userPrivate = null;
+
+    await fetch(url, options).then((res) => res.json().then((json) => {
+      console.log("\n")
+      const userPresence = json.presences.find((p) => p.puuid === this.puuid);
+      userPrivate = JSON.parse(atob(userPresence.private))
+    }));
+
+    return userPrivate;
+  }
+
   async getPUUID(port, password) {
     console.log("getting puuid");
 
@@ -324,7 +349,7 @@ class UserData {
       this.partyId == undefined ||
       this.partyId == "undefined"
     ) {
-      await getPartyPlayer();
+      await this.getPartyPlayer();
       return;
     }
     let url = `https://glz-${this.region}-1.${this.shard}.a.pvp.net/parties/v1/parties/${this.partyId}`;
@@ -574,7 +599,7 @@ class UserData {
       method: "POST",
       headers: {
         "X-Riot-Entitlements-JWT": this.entitlement,
-        "X-Riot-ClientVersion":this.clientVersion,
+        "X-Riot-ClientVersion": this.clientVersion,
         Authorization: "Bearer " + this.token,
       },
     };
