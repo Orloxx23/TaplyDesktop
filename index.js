@@ -16,6 +16,11 @@ const osIp = require("os");
 const { app, BrowserWindow, Tray, Notification, screen } = require("electron");
 const { ipcMain } = require("electron");
 const { Menu } = require("electron");
+const getInstance = require("./src/functions/UserData");
+const constants = require("./src/utils/constants");
+const userdata = getInstance();
+
+require("dotenv").config();
 
 process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
 
@@ -227,30 +232,7 @@ ipcMain.on("getCode", (event, arg) => {
 
 // We reset the variables and start the "run()" process again
 function reset() {
-  console.log("Resetting...");
-  lockData = null;
-  helpData = null;
-  sessionData = null;
-  lastRetryMessage = 0;
-
-  token = null;
-  entitlement = null;
-  puuid = null;
-  pid = null;
-  region = null;
-  shard = null;
-  clientVersion = null;
-  partyId = null;
-  party = null;
-  partyOld = null;
-  gameModes = null;
-  preGameId = null;
-  pregame = null;
-  pregameOld = null;
-  currentMatch = null;
-  playerContracts = null;
-  userIp = null;
-
+  userdata.resetVariables();
   run();
 }
 
@@ -682,14 +664,21 @@ async function run() {
   globalSocket?.emit("console", state);
   console.log("Got lock data...");
 
-  sessionData = null;
-  lastRetryMessage = 0;
+  userdata.sessionData = null;
+  userdata.lastRetryMessage = 0;
+  console.log(
+    "🚀 ~ file: index.js:787 ~ run ~ lastRetryMessage:",
+    userdata.lastRetryMessage
+  );
   do {
     try {
-      sessionData = await getSession(lockData.port, lockData.password);
-      if (sessionData.loaded === false) {
-        await asyncTimeout(1500);
-        sessionData = null;
+      userdata.sessionData = await userdata.getSession(
+        userdata.lockData.port,
+        userdata.lockData.password
+      );
+      if (userdata.sessionData.loaded === false) {
+        await userdata.asyncTimeout(1500);
+        userdata.sessionData = null;
       }
     } catch (e) {
       const currentTime = new Date().getTime();
@@ -704,8 +693,15 @@ async function run() {
 
   helpData = null;
   do {
-    helpData = await getHelp(lockData.port, lockData.password);
-    if (!helpData.events.hasOwnProperty("OnJsonApiEvent_chat_v4_presences")) {
+    userdata.helpData = await userdata.getHelp(
+      userdata.lockData.port,
+      userdata.lockData.password
+    );
+    if (
+      !userdata.helpData.events.hasOwnProperty(
+        "OnJsonApiEvent_chat_v4_presences"
+      )
+    ) {
       state = "Retrying help data events...";
       globalSocket?.emit("console", state);
       console.log("Retrying help data events...");
@@ -746,11 +742,18 @@ async function run() {
     console.log("Connected to websocket!");
     globalSocket?.emit("connected");
 
-    await getVersion();
-    await getEntitlementsToken(lockData.port, lockData.password);
-    await getPUUID(lockData.port, lockData.password);
-    await getPartyPlayer();
-    await getPlayerContracts();
+    await userdata.getVersion();
+    await userdata.getEntitlementsToken(
+      userdata.lockData.port,
+      userdata.lockData.password
+    );
+    await userdata.getRegionAndShard(
+      userdata.lockData.port,
+      userdata.lockData.password
+    );
+    await userdata.getPUUID(userdata.lockData.port, userdata.lockData.password);
+    await userdata.getPartyPlayer();
+    await userdata.getPlayerContracts();
 
     // To do...
     if (partyId) {
@@ -776,7 +779,7 @@ async function run() {
 
     // console.log(eventName, event);
     /* Pregame events */
-    if (eventName === "OnJsonApiEvent_riot-messaging-service_v1_message") {
+    if (eventName === constants.gameEvent) {
       if (event.data.service === "pregame") {
         if (
           event.uri.includes(
@@ -802,7 +805,7 @@ async function run() {
     }
 
     /* Match events */
-    if (eventName === "OnJsonApiEvent_riot-messaging-service_v1_message") {
+    /*if (eventName === constants.gameEvent) {
       if (event.data.service === "core-game") {
         if (
           event.uri.includes(
@@ -814,13 +817,51 @@ async function run() {
           globalSocket?.emit("inGame", currentMatch);
         }
       }
-    }
+    }*/
 
     /* Party, and chat events */
-    if (eventName === "OnJsonApiEvent_chat_v4_presences") {
-      if (event.data.presences[0].puuid !== puuid) return;
+    if (eventName === constants.chatState) {
+      if (event.data.presences[0].puuid !== userdata.puuid) return;
+      // console.log("chatState", eventName, event.data.presences[0].private);
 
-      await getParty();
+      await userdata.getPartyPlayer();
+      await userdata.getParty();
+
+      const presences = JSON.parse(atob(event.data.presences[0].private));
+      // console.log("presences", presences);
+
+      if (presences.sessionLoopState === "MENUS") {
+        // console.log("\n\tMENUS\n");
+        globalSocket?.emit("goHome");
+      }
+
+      if (presences.sessionLoopState === "PREGAME") {
+        // console.log("\n\tPREGAME\n");
+        await userdata.getPregame();
+        console.info("userdata.preGameId", userdata.preGameId);
+        if (userdata.preGameId === null || userdata.preGameId === undefined) {
+          globalSocket?.emit("preGameEvent", {
+            preGameId: "undefined",
+            pregame: "undefined",
+          });
+        }
+        if (isEqual(userdata.pregame?.team, userdata.pregameOld?.team)) return;
+        userdata.pregameOld = userdata.pregame;
+        globalSocket?.emit("preGameEvent", {
+          preGameId: userdata.preGameId,
+          pregame: userdata.pregame,
+        });
+      }
+
+      if (presences.sessionLoopState === "INGAME") {
+        console.log("\n\tINGAME\n");
+        await userdata.getCurrentMatch(globalSocket);
+        // globalSocket?.emit("inGame", userdata.currentMatch);
+        globalSocket?.emit("goInGame");
+        globalSocket?.emit("inGameData", presences);
+      }
+
+      console.log("\n"+presences+"\n");
 
       partyOld = party;
       globalSocket?.emit("updateData");
@@ -846,11 +887,18 @@ getUserIp();
 
 // We update some variables every 20 minutes (it's just a test since from time to time the connection is lost)
 setInterval(async () => {
-  if (!lockData || lockData === null) return;
-  await getEntitlementsToken(lockData.port, lockData.password);
-  await getPUUID(lockData.port, lockData.password);
-  await getPartyPlayer();
-  await getParty();
+  if (!userdata.lockData || userdata.lockData === null) return;
+  await userdata.getEntitlementsToken(
+    userdata.lockData.port,
+    userdata.lockData.password
+  );
+  await userdata.getRegionAndShard(
+    userdata.lockData.port,
+    userdata.lockData.password
+  );
+  await userdata.getPUUID(userdata.lockData.port, userdata.lockData.password);
+  await userdata.getPartyPlayer();
+  await userdata.getParty();
 }, 20 * 60000);
 
 // Connection with mobile app through websocket (socket.io)
@@ -861,7 +909,12 @@ io.on("connection", async (socket) => {
   socket.emit("connected");
 
   // We check if the server has the necessary data to connect with the user
-  if (!lockData || lockAgent === null || helpData === null || puuid === null) {
+  if (
+    !userdata.lockData ||
+    userdata.lockAgent === null ||
+    userdata.helpData === null ||
+    userdata.puuid === null
+  ) {
     socket.emit("noLockData");
     socket.emit("disconnected");
     socket.disconnect();
@@ -875,17 +928,19 @@ io.on("connection", async (socket) => {
   socket.emit("console", state);
 
   // We send the data to the mobile app
-  puuid && socket.emit("puuid", puuid);
-  gameModes && socket.emit("gamemodes", gameModes);
-  party && socket.emit("party", party);
-  playerContracts && socket.emit("playerContracts", playerContracts);
+  userdata.puuid && socket.emit("puuid", userdata.puuid);
+  userdata.gameModes && socket.emit("gamemodes", userdata.gameModes);
+  userdata.party && socket.emit("party", userdata.party);
+  userdata.playerContracts &&
+    socket.emit("playerContracts", userdata.playerContracts);
 
   // here orders are received from the mobile app
   socket.on("updateData", () => {
-    puuid && socket.emit("puuid", puuid);
-    gameModes && socket.emit("gamemodes", gameModes);
-    party && socket.emit("party", party);
-    playerContracts && socket.emit("playerContracts", playerContracts);
+    userdata.puuid && socket.emit("puuid", userdata.puuid);
+    userdata.gameModes && socket.emit("gamemodes", userdata.gameModes);
+    userdata.party && socket.emit("party", userdata.party);
+    userdata.playerContracts &&
+      socket.emit("playerContracts", userdata.playerContracts);
   });
 
   socket.on("setGamemode", async (data) => {
